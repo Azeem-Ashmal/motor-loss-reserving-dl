@@ -1,0 +1,27 @@
+# Motor Loss Reserving Configuration
+# No values here are derived from real claims data - cutoffs are the study design
+# (holdout window start/end), hyperparameters are architecture choices.
+dataset:
+  n_quarters: 65
+  train_cutoff: 47      # k <= 47: training window (2010 Q1 - 2021 Q4)
+  val_cutoff: 55        # 48 <= k <= 55: early-stopping validation window
+  holdout_start: 56     # 56 <= k <= 64: blind holdout evaluation window
+  holdout_end: 64
+  bf_mature_cohort_start: 24   # AY2016 Q1, used only to derive the BF burning-cost prior
+  bf_mature_cohort_end: 36     # AY2018 Q4 (exclusive)
+
+models:
+  lstm:
+    hidden_units: 64
+    dropout: 0.2
+    learning_rate: 0.001
+    epochs: 300
+    batch_size: 32
+    patience: 25
+    multi_task_lambda: 0.5   # weight on the BALOS head; IncPaid head gets 1 - lambda
+  gbm:
+    n_estimators: 100
+    learning_rate: 0.1
+    max_depth: 3
+
+seed: 42

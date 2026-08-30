@@ -1,0 +1,10 @@
+# Slim Top-Level Requirements File
+# For verbatim environment freeze, see requirements-lock.txt
+numpy>=2.4.0
+pandas>=3.0.0
+scikit-learn>=1.9.0
+torch>=2.13.0
+chainladder>=0.10.0
+pyyaml>=6.0.1
+matplotlib>=3.8.0
+scipy>=1.18.0

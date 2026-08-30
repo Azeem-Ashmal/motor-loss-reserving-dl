@@ -1,0 +1,23 @@
+# Never commit proprietary claims-derived data or anything derived from it.
+data/raw/
+*.csv
+!data/synthetic/**/*.csv
+*.xlsx
+*.npy
+*.pkl
+*.parquet
+.local_verification_data/
+
+# Runtime outputs (regenerate with scripts/run_all.py)
+outputs/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editors / OS
+.DS_Store
+.vscode/
+
+# Not committed yet - draft only, pending his sign-off. Remove this line
+# once the licence is finalised and you actually want it in the repo.
+LICENSE
