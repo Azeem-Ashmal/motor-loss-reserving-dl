@@ -98,9 +98,15 @@ class TestActuarialReconciliation(unittest.TestCase):
         lock_pkgs = {}
         for line in lock_content.splitlines():
             line = line.strip()
-            if line.startswith("Python "):
-                lock_pkgs["python"] = line.split("Python ")[1]
-            elif "==" in line:
+            if line.startswith("#"):
+                # The Python interpreter version is recorded as a comment
+                # (not a bare "Python 3.14.4" line) so this file still
+                # parses as valid pip requirements syntax.
+                stripped = line.lstrip("#").strip()
+                if stripped.startswith("Python "):
+                    lock_pkgs["python"] = stripped.split("Python ")[1]
+                continue
+            if "==" in line:
                 k, v = line.split("==", 1)
                 lock_pkgs[k.lower()] = v
 
