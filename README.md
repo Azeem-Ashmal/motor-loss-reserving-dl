@@ -2,26 +2,39 @@
 
 [![CI](https://github.com/Azeem-Ashmal/motor-loss-reserving-dl/actions/workflows/ci.yml/badge.svg)](https://github.com/Azeem-Ashmal/motor-loss-reserving-dl/actions/workflows/ci.yml)
 
-Quarterly loss reserving on Malaysian comprehensive private car claims (Theft and
-Windscreen perils), comparing classical actuarial methods (Mack Paid Chain
-Ladder, Incurred Chain Ladder, Munich Chain Ladder, Bornhuetter-Ferguson)
-against non-neural (Gradient Boosting) and neural (DeepTriangle-inspired LSTM)
-machine learning baselines. This is the reserving pipeline behind an MSc
-dissertation.
+Quarterly loss reserving on Malaysian comprehensive private car claims (Theft
+and Windscreen perils). Classical actuarial methods (Mack Paid Chain Ladder,
+Incurred Chain Ladder, Munich Chain Ladder, Bornhuetter-Ferguson) are
+benchmarked against a non-neural machine learning control (Gradient Boosting)
+and a neural model (a DeepTriangle-inspired LSTM). This is the reserving
+pipeline behind an MSc dissertation.
+
+```mermaid
+flowchart LR
+    A["Claims triangles<br/>(paid, case reserve, claim counts)"] --> B{Model class}
+    B --> C["Classical<br/>Mack / ICL / Munich / BF"]
+    B --> D["Non-neural ML<br/>Gradient Boosting"]
+    B --> E["Neural<br/>DeepTriangle LSTM / GRU"]
+    C --> F["Holdout evaluation<br/>2024 Q1 - 2026 Q1"]
+    D --> F
+    E --> F
+    F --> G["outputs/results.json"]
+```
 
 ## Data availability
 
 **No claims data is included in this repository.** The dissertation's results
 were produced on a proprietary industry motor-claims database that cannot be
-redistributed in any form or aggregation. `data/synthetic/` provides a generator that produces
-a structurally identical, obviously-fake triangle set so the full pipeline can
-be run and inspected by anyone. See `data/README.md` for the exact schema.
+redistributed in any form or aggregation. `data/synthetic/` provides a
+generator that produces a structurally identical, obviously-fake triangle set
+so the full pipeline can be run and inspected by anyone. See `data/README.md`
+for the exact schema.
 
 ## Installation
 
 ```Shell
-git clone <this repo>
-cd <this repo>
+git clone https://github.com/Azeem-Ashmal/motor-loss-reserving-dl.git
+cd motor-loss-reserving-dl
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -53,155 +66,99 @@ python scripts/run_multiseed.py --peril theft --data-dir /path/to/real/data
 python scripts/run_pooled_multiseed.py --data-dir /path/to/real/data
 ```
 
-`run_all.py` produces the single-seed, single-peril reserving table for both
-perils; `run_multiseed.py` produces the single-peril seed-variance distribution
-(the explicit 20-seed list lives in `config/seeds.yaml`, not generated at
-runtime, so the same seeds run every time); `run_pooled_multiseed.py` runs the
-pooled multi-peril architecture (below) across the same 20 seeds.
+- `run_all.py` produces the single-seed, single-peril reserving table for
+  both perils.
+- `run_multiseed.py` produces the single-peril seed-variance distribution.
+  The 20 seeds are listed explicitly in `config/seeds.yaml` rather than
+  generated at runtime, so the same seeds run every time.
+- `run_pooled_multiseed.py` runs the pooled multi-peril architecture (below)
+  across the same 20 seeds.
 
 ### Pooled multi-peril architecture and interpretability
 
 `src/pipeline.py`'s `run_pooled_lstm_evaluation` trains one LSTM on both
-perils simultaneously, with a learned embedding telling it which peril each
-cohort belongs to, rather than training two separate single-peril models.
-This was proposed in the project's original research plan as a mitigation for
-data scarcity on the thinner-trained peril, and is genuinely tested here
-across a full 20-seed sweep (`scripts/run_pooled_multiseed.py`), not just
-implemented and checked on one favourable run: the honest result is that it
-does not reliably improve the data-scarce peril (the one promising single
-seed was among the best 3 of 20, not typical) while it does reliably worsen
-the data-rich one, exactly as the underlying data-scarcity hypothesis would
-predict for the half of the prediction that actually holds (see the
-dissertation, Chapters 4-6, for the full comparison and the reasoning).
+perils at once, with a learned embedding telling it which peril each cohort
+belongs to, instead of training two separate single-peril models. The idea
+was to help the more data-scarce peril by giving the network twice the
+training data to learn shared structure from. Tested across a full 20-seed
+sweep (`scripts/run_pooled_multiseed.py`), the result is mixed: it does not
+reliably improve the data-scarce peril, and reliably worsens the data-rich
+one. See "Verified findings" below for the numbers.
 
 `src/interpretability.py`'s `occlusion_analysis` answers "what is the model
-actually using" by ablating one input channel at a time (replacing its entire
-observed history with a neutral value) and measuring the resulting change in
-holdout accuracy - a substitute for SHAP, whose standard implementations do
-not have first-class support for variable-length recurrent models. A channel
-whose removal *improves* accuracy was being used in a way that was actively
-hurting the forecast; a channel whose removal *worsens* accuracy was being
-used productively. `tests/test_interpretability.py` checks the harness itself
-against a zero-weight model, which cannot respond to any input and must
-therefore report exactly zero importance for both channels.
+actually using" by ablating one input channel at a time (replacing its
+entire observed history with a neutral value) and measuring the change in
+holdout accuracy. It's a simpler substitute for SHAP, whose standard
+implementations don't support variable-length recurrent models well. A
+channel whose removal *improves* accuracy was hurting the forecast; a
+channel whose removal *worsens* accuracy was helping it.
 
-`scripts/run_pooled_ensemble.py` loads a completed `run_pooled_multiseed.py`
-sweep's 20 checkpoints, rolls each forward autoregressively, and averages
-predictions cell-by-cell to test the natural next question after a seed-
-unstable architecture: would simple ensembling have fixed it for free? It
-exists so that this exact, dissertation-cited result is reproducible from
-code in this repository rather than from an ad-hoc calculation that was run
-once and only its output kept - the original computation was exactly that,
-an unsaved one-off script, which this repository's own "every number is
-traceable to code" standard does not tolerate for long.
+`scripts/run_pooled_ensemble.py` averages the 20 checkpoints from a completed
+`run_pooled_multiseed.py` sweep and rolls the average forward, to test
+whether simple ensembling could fix the architecture's seed-to-seed
+instability for free.
 
-## Verified findings (2026-08-29 reconciliation)
+## Verified findings
 
-Running this exact pipeline against the real underlying triangles surfaced a
-determinism bug in an earlier iteration (PyTorch's own weight initialisation
-was never seeded) and a genuine mistake in a hand-rolled Mack standard-error
-formula (caught by cross-checking against `chainladder` on the published RAA
-benchmark triangle, where it under-counted by roughly 1.85x). Once both were
-fixed, the single-peril DeepTriangle LSTM does not reproduce the dissertation's
-earlier claim of matching classical Incurred Chain Ladder accuracy - a 20-seed
-re-run puts its mean Theft error at +34.2% (std ±35.4pp), significantly worse
-than ICL's +1.3% (one-sample t-test, t=4.16, p=0.0005), and every one of the
-20 seeds individually underperforms ICL.
+The table below summarises the headline reserving results (holdout error as
+a % of the actual reserve; negative means the model under-projected). Full
+statistical detail — derivations, t-tests, and discussion — lives in the
+dissertation this repository accompanies.
 
-That finding led to a follow-up test, not just a negative conclusion: an
-occlusion analysis showed the single-peril model was over-extrapolating from
-too little training data (1,128 cells), not ignoring its inputs. Pooling both
-perils into one network with a peril embedding - proposed for exactly this
-failure mode in the project's original research plan, before either result was
-seen - looked like a striking fix on one seed (Theft error +50.9% to +4.4%,
-$R^2$ 0.65 to 0.93). A full 20-seed re-run of the pooled architecture, run
-before that result was accepted, shows it is not: the pooled 20-seed mean
-(+47.2%, ±35.9pp) is statistically indistinguishable from the single-peril
-mean (t=1.16, p=0.25) and remains significantly worse than ICL (t=5.73,
-p=0.00002) - the promising seed was one of the three best draws out of twenty,
-not typical. Windscreen's half of the same hypothesis (pooling should not help
-a peril that was never data-scarce) does hold up under the same 20-seed
-scrutiny, consistently worse than single-peril. See the dissertation's
-Chapters 4-8 for the full discussion. This is exactly the kind of result the
-reconciliation tests below exist to surface either way - they check
-identities against whatever the code actually outputs, not against a target
-answer.
+**Theft** (medium-tail, low-frequency, high-severity)
 
-A third hypothesis was tested the same way: Kuo (2019)'s original DeepTriangle
-used a GRU cell, not an LSTM, so `DeepTriangleLSTM` now accepts
-`rnn_type="lstm"|"gru"` (`--rnn-type` on `run_multiseed.py`) to test the cell
-type directly rather than assume LSTM was the right choice. A 20-seed GRU
-re-run on real Theft data gives a mean error of +39.9% (std ±43.4pp) -
-statistically indistinguishable from the LSTM's +34.2% (independent t-test,
-t=0.45, p=0.65) and still significantly worse than ICL (one-sample t-test
-against ICL's +1.3%, t=3.97, p=0.0008; only 1 of 20 GRU seeds even matched
-ICL's absolute error). Cell type is not the bottleneck either - reinforcing
-the occlusion-analysis diagnosis that the limiting factor is training-data
-volume (1,128 cells) and feature poverty, not a fixable architecture pick.
+| Model                                  | Mean error | vs. ICL | vs. LSTM baseline |
+| --------------------------------------- | ---------: | --------------------- | --------------------- |
+| Incurred Chain Ladder (ICL)             |     +1.3%  | benchmark              | -- |
+| Mack Paid Chain Ladder                  |    +56.0%  | worse                  | -- |
+| DeepTriangle LSTM, single-peril (20-seed) | +34.2% ± 35.4pp | worse (t=4.16, p=0.0005) | baseline |
+| DeepTriangle LSTM, pooled perils (20-seed) | +47.2% ± 35.9pp | worse (t=5.73, p=0.00002) | not significantly different (t=1.16, p=0.25) |
+| DeepTriangle GRU, single-peril (20-seed) | +39.9% ± 43.4pp | worse (t=3.97, p=0.0008) | not significantly different (t=0.45, p=0.65) |
+| DeepTriangle LSTM + claim counts (20-seed) | +65.6% ± 47.6pp | worse (t=6.04, p=0.000008) | worse (t=2.37, p=0.023) |
 
-A fourth hypothesis then had to be tested rather than assumed: if feature
-poverty is the real constraint, does adding a genuinely new feature help?
-`run_peril_evaluation`/`run_multiseed.py --use-counts` add incremental claim
-counts as a third LSTM input channel (from `claims_count_qtr_triangle.csv`,
-same cumulative-triangle convention as paid/outstanding; future rollout steps
-carry the last-observed count forward rather than leaking true future counts -
-see `predict_auto_regressive`'s docstring in `src/evaluate.py`). The honest
-result is the opposite of what the diagnosis predicted: a 20-seed re-run on
-real Theft data gives mean error +65.6% (std ±47.6pp), significantly *worse*
-than the 2-feature LSTM (+34.2%, independent t-test t=2.37, p=0.023) and worse
-than ICL (t=6.04, p=0.000008; 0 of 20 seeds beat ICL). With only 1,128 training
-cells, adding a third noisy channel increased the model's capacity to overfit
-faster than it added usable signal - a real, if unwelcome, finding about this
-specific dataset's size, not a defect in the idea of feature-richer models in
-general.
+**Windscreen** (short-tail, high-frequency, low-severity)
 
-Separately, `MackPaidChainLadder.mack_windowed_bootstrap` closes a gap flagged
-earlier: `mack_se_full_runoff()` only ever covered the standard textbook
-quantity (full run-off to ultimate), never the specific calendar-quarter
-holdout window this pipeline's reserve figures actually use. The new method
-is a genuine Mack-model simulation - not a different model bolted on - that
-perturbs each cell's link ratio by Mack's own parameter variance
-(sigma_j^2/sum C_ij) and process variance (sigma_j^2 * C_ij) recursively, then
-sums only the incremental cells inside the target window for cohorts that
-already existed as of the cutoff (matching `run_peril_evaluation`'s own
-population exactly - excluding this restriction was an early bug caught by a
-reconciliation test before real numbers were trusted, since it silently
-included brand-new accident quarters that only begin inside the holdout
-window). A second, more subtle bug was caught the same way on a later review
-pass: the link-ratio parameter draw was originally sampled independently per
-accident-year cohort rather than once per development period and shared
-across cohorts within a simulation, which incorrectly diversifies away the
-cross-cohort correlation Mack's own aggregate formula has a covariance term
-for specifically because every cohort's projection uses the *same* uncertain
-f_j. Fixed to draw one f_j per simulated development period, applied to every
-cohort in that draw. On real data (8,000 simulations, post-fix): Theft's
-windowed Mack reserve carries a coefficient of variation of 33.2% (mean
-RM 79,933k, 90% interval RM 37,139k-124,551k), Windscreen's is tighter at
-14.7% (mean RM 74,997k, 90% interval RM 56,435k-93,265k) - both reconcile to
+| Model                                    | Mean error | vs. ICL |
+| ----------------------------------------- | ---------: | ------- |
+| Incurred Chain Ladder (ICL)               |     -2.8%  | benchmark |
+| Mack Paid Chain Ladder                    |     -3.2%  | worse   |
+| DeepTriangle LSTM, single-peril (20-seed) | -75.5% ± 8.4pp | worse   |
+| DeepTriangle LSTM, pooled perils (20-seed) | -80.2% ± 5.2pp | worse   |
+
+**What this means:** on Theft, no neural variant tested (single-peril,
+pooled, GRU cell, or an added claim-count feature) matches the classical
+Incurred Chain Ladder, and every one of the 20 seeds run for each variant
+individually underperforms it. An occlusion analysis points to the reason:
+with only 1,128 training cells, the model over-extrapolates rather than
+ignoring its inputs — a training-data ceiling, not a fixable architecture
+choice. Averaging the pooled architecture's 20 checkpoints into an ensemble
+confirms this: the ensemble's error equals the mean of its 20 seeds to five
+decimal places, the signature of a shared, systematic bias that ensembling
+cannot cancel. On Windscreen every model under-projects, and pooling makes
+it worse rather than better.
+
+Separately, `MackPaidChainLadder.mack_windowed_bootstrap` derives a
+stochastic uncertainty interval for the exact calendar window these reserve
+figures use (rather than the standard full-run-off quantity most Mack
+implementations report). On real data (8,000 simulations): Theft's windowed
+reserve has a mean of RM 79,933k and a coefficient of variation of 33.2%
+(90% interval RM 37,139k-124,551k); Windscreen's mean is RM 74,997k with a
+tighter CV of 14.7% (90% interval RM 56,435k-93,265k). Both reconcile to
 within 1% of the deterministic chain-ladder point estimate for the same
-window, as the model's own unbiasedness predicts. The fix moved these numbers
-only slightly (pre-fix CVs were 33.15%/14.67%), suggesting parameter
-uncertainty is a modest share of the total for this triangle, but the
-methodology is now correct regardless of how much it happened to matter here.
-Worth noting for context: Theft's LSTM mean error (+34.2%) sits
-inside classical Mack's own uncertainty envelope for that peril, while ICL's
-point estimate (+1.3%) does not carry a comparably large uncertainty band by
-construction (ICL is a different, deterministic combination of paid+incurred
-information, not perturbed by this Mack-paid-only simulation) - a caveat worth
-stating plainly rather than implying the two are on equal footing.
+window, as the method's own unbiasedness predicts. For context: Theft's LSTM
+mean error (+34.2%) falls inside Mack's own uncertainty envelope for that
+peril, while ICL's point
+estimate does not carry a comparably wide band by construction.
 
-`requirements-lock.txt` was also found to be a raw `pip freeze` of the host
-machine's system Python (no virtual environment was active when it was first
-generated), so alongside the real dependencies it listed ~75 entirely
-unrelated Ubuntu OS/desktop packages (`aptdaemon`, `bcc`, `systemd-python`,
-`ubuntu-pro-client`, `PyGObject`, and similar) - a real reproducibility-
-hygiene defect, since the file is supposed to be a trustworthy record of what
-this pipeline actually depends on. Regenerated by walking the real transitive
-dependency closure of `requirements.txt`'s eight direct packages via
-`importlib.metadata` (not another raw freeze, and not a manual guess at which
-of the ~110 installed packages "look relevant"): 34 genuine packages remain.
-`env_block.tex` was unaffected (the five version numbers it cites were always
-correct) and regenerates identically from the cleaned file.
+### Bugs found and fixed during verification
+
+| Bug | Impact | Fix |
+| --- | --- | --- |
+| PyTorch weight initialisation was never seeded | "Seed 42" results weren't actually reproducible | Full determinism control added (`src/seeding.py`) |
+| Hand-rolled Mack standard-error formula under-counted by ~1.85x | Wrong uncertainty intervals | Cross-checked against `chainladder` on the published RAA benchmark triangle and corrected |
+| Windowed Mack bootstrap included cohorts that only begin inside the holdout window | Inflated the simulated reserve roughly eightfold | Restricted to cohorts that already existed as of the calibration cutoff |
+| Windowed Mack bootstrap drew the link-ratio parameter independently per cohort | Understated cross-cohort correlation Mack's own formula accounts for | Draw one shared parameter per simulated development period, applied to every cohort |
+| `requirements-lock.txt` was a raw `pip freeze` of the host machine | Listed ~75 unrelated OS packages (`aptdaemon`, `bcc`, `systemd-python`, etc.) alongside real dependencies | Regenerated from the actual transitive dependency closure via `importlib.metadata`; 34 genuine packages remain |
 
 ## Repository layout
 
@@ -266,40 +223,39 @@ python scripts/run_all.py                 # writes outputs/results.json
 python -m unittest discover -s tests -v
 ```
 
-Only the standard library's `unittest` is required - no extra test-runner
-dependency to install. Seven files (23 tests), two different kinds of check:
+Only the standard library's `unittest` is required, no extra test-runner
+dependency to install. Seven files, 23 tests, two kinds of check:
 
 - `test_classical_models.py`, `test_metrics.py`, `test_interpretability.py`,
   `test_pooled_pipeline.py`, `test_mack_windowed_bootstrap.py`, and
   `test_architecture_variants.py` are unit tests against hand-computable
   examples or internal-consistency checks (including the dissertation's own
-  worked Table 1), independent of any real claims data file - they run against
-  the bundled synthetic data instead.
+  worked Table 1), independent of any real claims data file — they run
+  against the bundled synthetic data instead.
 - `test_reconciliation.py` is an integration suite: it checks internal
-  identities against whatever is currently in `outputs/results.json`. It does
-  not assert against a hardcoded target answer, so it fails honestly if a
-  future code change breaks a number's derivation, and it is what caught two
-  real bugs (an LSTM parameter-count formula and a reserve-decomposition
-  scoping error) during this pipeline's own development.
+  identities against whatever is currently in `outputs/results.json`, rather
+  than against a hardcoded target answer, so it fails honestly if a future
+  code change breaks a number's derivation. It's what caught two of the real
+  bugs listed above during this pipeline's own development.
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the full test suite plus `run_all.py` and
 `make_figures.py` on every push and pull request, entirely against the
-bundled synthetic data - it never receives a `--data-dir` argument, so it has
+bundled synthetic data. It never receives a `--data-dir` argument, so it has
 no access to and makes no use of anyone's real data, on this repository or a
 fork of it. Its only purpose is to prove, automatically and on a clean
 checkout, that the pipeline installs and runs end to end exactly as this
-README describes. If you fork this repo and want to point the pipeline at
-your own real data, that is a separate, manual, local step exactly as
-described under "Reproducing the dissertation results" above - CI does not
-do this for you and is not designed to, since a workflow that could pull in
-arbitrary external data on every push is not something this repository wants
-to enable by default.
+README describes. Pointing the pipeline at your own real data (see
+"Reproducing the dissertation results" above) is a separate, manual, local
+step — CI does not do this for you.
 
 ## Licence
 
-No `LICENSE` file is included yet. One (MIT) will be added once finalised.
-Until then, all rights are reserved by default.
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
+In short: you may view, run, modify, and share this code freely for any
+noncommercial purpose (personal study, research, education, hobby projects).
+Commercial use requires the copyright holder's separate permission. See the
+`LICENSE` file for the full, binding terms.
 
 This repository contains no real claims data of any kind.

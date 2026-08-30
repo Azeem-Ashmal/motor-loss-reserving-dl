@@ -17,7 +17,3 @@ __pycache__/
 # Editors / OS
 .DS_Store
 .vscode/
-
-# Not committed yet - draft only, pending his sign-off. Remove this line
-# once the licence is finalised and you actually want it in the repo.
-LICENSE
