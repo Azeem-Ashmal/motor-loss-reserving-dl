@@ -145,10 +145,18 @@ reserve has a mean of RM 79,933k and a coefficient of variation of 33.2%
 (90% interval RM 37,139k-124,551k); Windscreen's mean is RM 74,997k with a
 tighter CV of 14.7% (90% interval RM 56,435k-93,265k). Both reconcile to
 within 1% of the deterministic chain-ladder point estimate for the same
-window, as the method's own unbiasedness predicts. For context: Theft's LSTM
-mean error (+34.2%) falls inside Mack's own uncertainty envelope for that
-peril, while ICL's point
-estimate does not carry a comparably wide band by construction.
+window, as the method's own unbiasedness predicts.
+
+The same simulation methodology applies just as well to the incurred
+triangle: `IncurredChainLadder.icl_windowed_bootstrap` measures ICL's own
+windowed uncertainty directly, rather than treating its point estimate as
+exact by assumption. On real data: Theft's windowed ICL reserve has a CV of
+8.55% (90% interval RM 44,818k-59,417k); Windscreen's is 2.09% (90% interval
+RM 72,613k-77,845k) — both markedly tighter than Mack's. For context: Theft's
+LSTM mean error (+34.2%) falls inside Mack's own uncertainty envelope for
+that peril, but the single-peril LSTM's mean projected reserve falls
+*outside* ICL's measured 90% interval on both perils — the LSTM is failing
+to beat a benchmark now confirmed precise, not merely assumed to be.
 
 ### Bugs found and fixed during verification
 
@@ -158,6 +166,7 @@ estimate does not carry a comparably wide band by construction.
 | Hand-rolled Mack standard-error formula under-counted by ~1.85x | Wrong uncertainty intervals | Cross-checked against `chainladder` on the published RAA benchmark triangle and corrected |
 | Windowed Mack bootstrap included cohorts that only begin inside the holdout window | Inflated the simulated reserve roughly eightfold | Restricted to cohorts that already existed as of the calibration cutoff |
 | Windowed Mack bootstrap drew the link-ratio parameter independently per cohort | Understated cross-cohort correlation Mack's own formula accounts for | Draw one shared parameter per simulated development period, applied to every cohort |
+| Active-cell materiality filter was hardcoded to RM 1, not the documented RM 1,000 | RMSE/MAE understated (barely filtered any cells); reserve totals and error % were unaffected | Shared `ACTIVE_CELL_THRESHOLD_RM` constant; re-run confirmed n_active 123→90 (Theft), 147→122 (Windscreen) |
 | `requirements-lock.txt` was a raw `pip freeze` of the host machine | Listed ~75 unrelated OS packages (`aptdaemon`, `bcc`, `systemd-python`, etc.) alongside real dependencies | Regenerated from the actual transitive dependency closure via `importlib.metadata`; 34 genuine packages remain |
 
 ## Repository layout
@@ -179,7 +188,7 @@ estimate does not carry a comparably wide band by construction.
 │   ├── interpretability.py     # occlusion-based channel importance
 │   ├── diagnostics.py          # pre/post-period link ratio comparison
 │   ├── metrics.py              # per-unit Freq x Sev = BC identities
-│   ├── classical/              # mack.py, icl.py, munich.py, bf.py
+│   ├── classical/              # mack.py, icl.py (+ windowed ICL bootstrap), munich.py, bf.py
 │   └── ml/                     # lstm.py, gbm.py
 ├── scripts/
 │   ├── run_all.py              # single-seed full pipeline, both perils
@@ -197,6 +206,7 @@ estimate does not carry a comparably wide band by construction.
     ├── test_interpretability.py      # occlusion harness sanity check
     ├── test_pooled_pipeline.py       # pooled architecture smoke + determinism
     ├── test_mack_windowed_bootstrap.py  # windowed Mack SE determinism + reconciliation
+    ├── test_icl_windowed_bootstrap.py   # windowed ICL SE determinism + reconciliation
     ├── test_architecture_variants.py    # GRU cell and claim-count-feature smoke + determinism
     └── test_reconciliation.py        # integration tests against outputs/results.json
 ```
@@ -224,10 +234,11 @@ python -m unittest discover -s tests -v
 ```
 
 Only the standard library's `unittest` is required, no extra test-runner
-dependency to install. Seven files, 23 tests, two kinds of check:
+dependency to install. Eight files, 25 tests, two kinds of check:
 
 - `test_classical_models.py`, `test_metrics.py`, `test_interpretability.py`,
-  `test_pooled_pipeline.py`, `test_mack_windowed_bootstrap.py`, and
+  `test_pooled_pipeline.py`, `test_mack_windowed_bootstrap.py`,
+  `test_icl_windowed_bootstrap.py`, and
   `test_architecture_variants.py` are unit tests against hand-computable
   examples or internal-consistency checks (including the dissertation's own
   worked Table 1), independent of any real claims data file — they run
