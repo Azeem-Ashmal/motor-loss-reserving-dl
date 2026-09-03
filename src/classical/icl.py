@@ -67,4 +67,116 @@ class IncurredChainLadder:
             paid_allocation[i, :] = I_full[i, -1] * inc_pattern
 
         self.f_I_, self.I_full_ = f_I, I_full
+        self.inc_pattern_ = inc_pattern
         return f_I, I_full, paid_allocation
+
+    def icl_windowed_bootstrap(
+        self, holdout_start_cal_idx: int, holdout_end_cal_idx: int,
+        n_sims: int = 8000, seed: int = 42,
+    ):
+        """
+        Windowed stochastic uncertainty for the ICL reserve this pipeline
+        actually reports, not the raw incurred triangle. fit_predict() must
+        be called first (this reuses its fitted f_I_, I_full_, and
+        inc_pattern_ - the deterministic paid-settlement pattern derived from
+        Mack's own paid link ratios, unchanged from the point estimate).
+
+        Applies exactly the same Mack-model simulation mechanics as
+        MackPaidChainLadder.mack_windowed_bootstrap (parameter variance
+        se(f_j)^2 = sigma_j^2 / sum_i I_ij, one shared f_sim draw per
+        (simulation, development period) rather than independently per
+        cohort, process variance sigma_j^2 * I_ij per cell), applied to the
+        incurred triangle I_ij = C_ij + B_ij instead of the paid triangle.
+        Each simulated draw's completed incurred triangle gives a simulated
+        ultimate incurred per cohort, I_sim[i, -1]; that ultimate is then
+        spread across development quarters using the SAME fixed inc_pattern_
+        the deterministic point estimate uses (an allocation device, not a
+        re-simulated quantity - see fit_predict()'s docstring on why the paid
+        pattern is held fixed rather than re-derived per draw), and only the
+        incremental "paid-equivalent" amounts falling inside
+        [holdout_start_cal_idx, holdout_end_cal_idx], for cohorts that already
+        existed as of cutoff_cal_idx, are summed - matching exactly what
+        Table 3/6's ICL row and run_peril_evaluation's cohort population use
+        elsewhere in this pipeline.
+
+        Caveat this function does not resolve on its own: Mack's independence
+        and proportionality assumptions were derived for paid losses, and are
+        a stronger assumption to apply to case-reserve-inclusive incurred
+        data, where increments partly reflect adjuster judgement rather than
+        pure random development. This measures ICL's uncertainty under a
+        Mack-consistent model of the incurred triangle; it does not newly
+        validate that model's assumptions for incurred data specifically.
+
+        Returns dict with mean/se/p5/p95 of the simulated windowed
+        paid-equivalent reserve, in RM thousands.
+        """
+        rng = np.random.default_rng(seed)
+        I = self.I
+        I_mat = self.I_mat
+        f_I = self.f_I_
+        inc_pattern = self.inc_pattern_
+
+        train = np.full_like(I_mat, np.nan)
+        for i in range(I):
+            for j in range(I):
+                if i + j <= self.cutoff_cal_idx:
+                    train[i, j] = I_mat[i, j]
+
+        sigma2 = np.zeros(I - 1)
+        for j in range(I - 1):
+            valid = ~np.isnan(train[:, j]) & ~np.isnan(train[:, j + 1]) & (train[:, j] > 0)
+            n_j = int(valid.sum())
+            if n_j > 1:
+                resid = train[valid, j + 1] / train[valid, j] - f_I[j]
+                sigma2[j] = float(np.sum(train[valid, j] * resid**2) / (n_j - 1))
+            elif j >= 2 and sigma2[j - 1] > 0 and sigma2[j - 2] > 0:
+                sigma2[j] = min(sigma2[j - 1], sigma2[j - 2], sigma2[j - 1] ** 2 / sigma2[j - 2])
+            elif j >= 1:
+                sigma2[j] = sigma2[j - 1]
+
+        se_f2 = np.zeros(I - 1)
+        for j in range(I - 1):
+            valid = ~np.isnan(train[:, j]) & ~np.isnan(train[:, j + 1]) & (train[:, j] > 0)
+            denom = train[valid, j].sum()
+            se_f2[j] = sigma2[j] / denom if denom > 0 else 0.0
+
+        windowed_sums = np.zeros(n_sims)
+        for s in range(n_sims):
+            I_sim = train.copy()
+            for i in range(self.cutoff_cal_idx + 1, I):
+                if not np.isnan(I_mat[i, 0]):
+                    I_sim[i, 0] = I_mat[i, 0]
+            for j in range(I - 1):
+                # Shared per-(sim, dev-period) parameter draw, not independent
+                # per cohort - see MackPaidChainLadder.mack_windowed_bootstrap
+                # for why an independent-per-cohort draw would understate the
+                # windowed reserve's true aggregate uncertainty.
+                f_sim = f_I[j] + rng.normal(0.0, np.sqrt(max(se_f2[j], 0.0)))
+                for i in range(I):
+                    if i + j + 1 <= self.cutoff_cal_idx:
+                        continue
+                    if np.isnan(I_sim[i, j]):
+                        continue
+                    mean_next = I_sim[i, j] * f_sim
+                    process_sd = np.sqrt(max(sigma2[j], 0.0) * max(I_sim[i, j], 0.0))
+                    I_sim[i, j + 1] = mean_next + rng.normal(0.0, process_sd)
+
+            window_total = 0.0
+            for i in range(self.cutoff_cal_idx + 1):
+                ultimate_incurred_sim = I_sim[i, -1]
+                if np.isnan(ultimate_incurred_sim):
+                    continue
+                paid_alloc_sim_i = ultimate_incurred_sim * inc_pattern
+                for j in range(I):
+                    k = i + j
+                    if holdout_start_cal_idx <= k <= holdout_end_cal_idx:
+                        window_total += paid_alloc_sim_i[j]
+            windowed_sums[s] = window_total
+
+        return {
+            "n_sims": n_sims,
+            "mean_rm_k": float(np.mean(windowed_sums)) / 1000.0,
+            "se_rm_k": float(np.std(windowed_sums, ddof=1)) / 1000.0,
+            "p5_rm_k": float(np.percentile(windowed_sums, 5)) / 1000.0,
+            "p95_rm_k": float(np.percentile(windowed_sums, 95)) / 1000.0,
+        }

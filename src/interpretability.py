@@ -28,6 +28,7 @@ import numpy as np
 
 from src.data_pipeline import MinMaxSequenceScaler
 from src.evaluate import compute_metrics, predict_auto_regressive
+from src.pipeline import ACTIVE_CELL_THRESHOLD_RM
 from src.ml.lstm import DeepTriangleLSTM
 
 
@@ -79,7 +80,7 @@ def occlusion_analysis(
                     pred_val = forecast[step_idx, 0]
                     results[label]["reserve"] += pred_val
                     results[label]["actual_reserve"] += act_val
-                    if act_val > 1.0:
+                    if act_val > ACTIVE_CELL_THRESHOLD_RM:
                         results[label]["actual_cells"].append(act_val)
                         results[label]["pred_cells"].append(pred_val)
 

@@ -25,6 +25,13 @@ from src.ml.lstm import DeepTriangleLSTM
 from src.seeding import set_deterministic_seed
 from src.train import train_deeptriangle_model
 
+# Materiality threshold for the "active cell" holdout subset (RMSE/MAE/R^2
+# are computed only on cells whose realised incremental payment exceeds
+# this), matching the RM 1,000 threshold stated in the dissertation
+# (Section 3.3). A prior version of this file hardcoded 1.0 (RM 1) here,
+# which barely filtered anything and did not match the documented rule.
+ACTIVE_CELL_THRESHOLD_RM = 1000.0
+
 
 def _load_dataset_config() -> Dict[str, int]:
     """
@@ -224,7 +231,7 @@ def run_peril_evaluation(
                 all_mcl.append(float(mcl_val)); all_gbm.append(float(gbm_val)); all_dt.append(float(dt_val))
                 all_cal.append(target_cal); all_dev.append(target_dev)
 
-                if act_val > 1.0:
+                if act_val > ACTIVE_CELL_THRESHOLD_RM:
                     actual_cells.append(act_val); mack_cells.append(mack_val)
                     icl_cells.append(icl_val); mcl_cells.append(mcl_val)
                     gbm_cells.append(gbm_val); dt_cells.append(dt_val)
@@ -378,7 +385,7 @@ def run_pooled_lstm_evaluation(
                     dt_val = dt_forecast[step_idx, 0]
                     actual_sum += act_val
                     dt_sum += dt_val
-                    if act_val > 1.0:
+                    if act_val > ACTIVE_CELL_THRESHOLD_RM:
                         actual_cells.append(act_val)
                         dt_cells.append(dt_val)
         actual_arr = np.array(actual_cells)
