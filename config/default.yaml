@@ -18,7 +18,9 @@ models:
     epochs: 300
     batch_size: 32
     patience: 25
-    multi_task_lambda: 0.5   # weight on the BALOS head; IncPaid head gets 1 - lambda
+    multi_task_lambda: 0.5   # weight on the IncPaid head; BALOS head gets 1 - lambda (matches
+                              # the dissertation's Eq 4.21 convention; not currently read by
+                              # src/train.py, which hardcodes both MultiTaskLoss weights to 0.5)
   gbm:
     n_estimators: 100
     learning_rate: 0.1

@@ -60,7 +60,7 @@ class MunichChainLadder:
                 dev_res_P = (P_train[valid, j + 1] / P_train[valid, j] - f_P[j]) / (sigma_f_P[j] + 1e-6)
                 q_I_list.extend(q_I); dev_res_P_list.extend(dev_res_P)
 
-        lambda_P = (float(np.cov(q_I_list, dev_res_P_list)[0, 1] / (np.var(q_I_list) + 1e-6))
+        lambda_P = (float(np.cov(q_I_list, dev_res_P_list)[0, 1] / (np.var(q_I_list, ddof=1) + 1e-6))
                     if len(q_I_list) > 0 else 0.0)
 
         P_mcl, I_mcl = P_train.copy(), I_train.copy()

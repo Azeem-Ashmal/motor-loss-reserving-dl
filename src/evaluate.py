@@ -3,13 +3,43 @@ Auto-regressive forecasting and evaluation-metric utilities, shared by the
 classical, GBM and LSTM models in the pipeline.
 """
 
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
 
 from src.data_pipeline import MinMaxSequenceScaler
 from src.ml.lstm import DeepTriangleLSTM
+
+
+def compute_duan_smearing_psi(
+    model: DeepTriangleLSTM,
+    scaler: MinMaxSequenceScaler,
+    train_tensors: Dict[str, torch.Tensor],
+    device: str = "cpu",
+) -> Tuple[float, float]:
+    """
+    Duan (1983) smearing factors (psi_inc, psi_balos), estimated from this
+    model's own one-step-ahead training residuals in log1p space (Section
+    4.1.3, Eq 4.9): psi = mean(exp(e_i)), e_i = true_log1p - pred_log1p.
+    Uses the same teacher-forced training examples train_deeptriangle_model
+    computes loss over (train_tensors["X"]/["Y"]/["mask"]/["peril_ids"]), not
+    a held-out set, matching Duan's own definition of the smearing residual.
+    """
+    model.eval()
+    with torch.no_grad():
+        preds_scaled = model(
+            train_tensors["X"].to(device), train_tensors["mask"].to(device), train_tensors["peril_ids"].to(device)
+        ).cpu().numpy()
+    targets_scaled = train_tensors["Y"].numpy()
+
+    pred_log = scaler.unscale_to_log1p(preds_scaled)
+    true_log = scaler.unscale_to_log1p(targets_scaled)
+    residual = true_log - pred_log
+
+    psi_inc = float(np.mean(np.exp(residual[..., 0])))
+    psi_balos = float(np.mean(np.exp(residual[..., 1])))
+    return psi_inc, psi_balos
 
 
 def predict_auto_regressive(
@@ -19,6 +49,7 @@ def predict_auto_regressive(
     peril_id: int = 0,
     max_total_len: int = 65,
     device: str = "cpu",
+    smearing_psi: Optional[Tuple[float, float]] = None,
 ) -> np.ndarray:
     """
     Recursively feed the model's own predictions at quarter j back into the
@@ -60,7 +91,7 @@ def predict_auto_regressive(
         return np.empty((0, 2))
 
     forecasts_scaled = np.array(forecasts_scaled)
-    forecasts_unscaled = scaler.inverse_transform_targets(forecasts_scaled)
+    forecasts_unscaled = scaler.inverse_transform_targets(forecasts_scaled, smearing_psi=smearing_psi)
     forecasts_unscaled = np.maximum(forecasts_unscaled, 0.0)
     return forecasts_unscaled
 

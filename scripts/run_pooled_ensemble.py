@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.data_pipeline import MinMaxSequenceScaler, load_and_preprocess_triangles, pad_and_tensorize
 from src.evaluate import compute_metrics, predict_auto_regressive
 from src.ml.lstm import DeepTriangleLSTM
-from src.pipeline import TRAIN_CUTOFF, VAL_END, HOLDOUT_END, _build_lstm_splits
+from src.pipeline import TRAIN_CUTOFF, VAL_END, HOLDOUT_END, ACTIVE_CELL_THRESHOLD_RM, _build_lstm_splits
 
 
 def _fit_shared_scaler(theft_paid, theft_out, ws_paid, ws_out):
@@ -66,7 +66,7 @@ def _ensemble_forecast(models, scaler, inc, balos, peril_id):
                 ens_val = avg_forecast[step_idx, 0]
                 actual_sum += act_val
                 ens_sum += ens_val
-                if act_val > 1.0:
+                if act_val > ACTIVE_CELL_THRESHOLD_RM:
                     actual_cells.append(act_val)
                     ens_cells.append(ens_val)
     actual_arr = np.array(actual_cells)

@@ -90,3 +90,44 @@ def main(theft_dir: str, ws_dir: str, out_path: str) -> None:
 
 if __name__ == "__main__":
     main(sys.argv[1], sys.argv[2], sys.argv[3])
+
+
+def main_severity_burningcost(theft_dir: str, ws_dir: str, out_path: str) -> None:
+    """Two-panel merge of severity and burning cost (Figures 5.7b/5.7c), saving
+    one float placement over two separate figures; frequency (5.7a) stays
+    separate since it needs its own dual-axis treatment."""
+    tf, ts, tb = series(theft_dir)
+    wf, ws_, wb = series(ws_dir)
+    n = len(ts)
+    x = 2010 + np.arange(n) / 4.0
+
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+
+    ax = axes[0]
+    ax.axvspan(2017.5, 2018.5, color="orange", alpha=0.25)
+    ax.axvspan(2020.0, 2021.75, color="grey", alpha=0.30)
+    ax.plot(x, ts, color="firebrick", label="Theft")
+    ax.plot(x, ws_, color="steelblue", label="Windscreen")
+    ax.set_yscale("log")
+    ax.set_ylabel("RM / Claim", fontsize=13)
+    ax.set_title("Quarterly Claim Severity", fontsize=15)
+    ax.set_xlabel("Accident Quarter", fontsize=13)
+    ax.legend(loc="upper left", fontsize=11)
+    ax.tick_params(labelsize=11)
+    ax.grid(True, linestyle="--", alpha=0.4)
+
+    ax = axes[1]
+    ax.axvspan(2017.5, 2018.5, color="orange", alpha=0.25)
+    ax.axvspan(2020.0, 2021.75, color="grey", alpha=0.30)
+    ax.plot(x, tb, color="firebrick", label="Theft")
+    ax.plot(x, wb, color="steelblue", label="Windscreen")
+    ax.set_ylabel("RM / Vehicle-Year", fontsize=13)
+    ax.set_title("Quarterly Burning Cost", fontsize=15)
+    ax.set_xlabel("Accident Quarter", fontsize=13)
+    ax.legend(loc="upper left", fontsize=11)
+    ax.tick_params(labelsize=11)
+    ax.grid(True, linestyle="--", alpha=0.4)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    print("written:", out_path)

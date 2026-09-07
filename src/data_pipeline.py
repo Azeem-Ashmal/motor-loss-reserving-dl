@@ -15,7 +15,7 @@ Key Features:
 
 import json
 import os
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -119,20 +119,46 @@ class MinMaxSequenceScaler:
             scaled[..., 2 + e] = (col - self.extra_min[e]) / (self.extra_max[e] - self.extra_min[e])
         return np.clip(scaled, self.clip_min, self.clip_max)
 
-    def inverse_transform_targets(self, targets_scaled: np.ndarray) -> np.ndarray:
+    def unscale_to_log1p(self, targets_scaled: np.ndarray) -> np.ndarray:
         """
-        Inverse transform scaled targets of shape (..., 2) back to original RM values.
+        Undo only the min-max step, returning targets in log1p space (i.e.
+        before expm1). Used both by inverse_transform_targets and by the Duan
+        smearing estimator, which needs residuals in this same space.
         """
         if not self.is_fitted:
             raise ValueError("Scaler must be fitted before inverse transforming.")
-
         inc_log = targets_scaled[..., 0] * (self.inc_paid_max - self.inc_paid_min) + self.inc_paid_min
         bal_log = targets_scaled[..., 1] * (self.balos_max - self.balos_min) + self.balos_min
+        out = np.zeros_like(targets_scaled, dtype=np.float32)
+        out[..., 0] = inc_log
+        out[..., 1] = bal_log
+        return out
+
+    def inverse_transform_targets(self, targets_scaled: np.ndarray, smearing_psi: Optional[Tuple[float, float]] = None) -> np.ndarray:
+        """
+        Inverse transform scaled targets of shape (..., 2) back to original RM values.
+
+        smearing_psi, if given, is (psi_inc, psi_balos): Duan (1983) smearing
+        factors estimated from training-set residuals in log1p space
+        (Section 4.1.3). When supplied, each channel is retransformed as
+        psi * exp(log_val) - 1 instead of the naive expm1(log_val) = exp(log_val) - 1,
+        correcting the Jensen's-inequality downward bias of exponentiating a
+        squared-error-trained (conditional-median) prediction. The "-1" stays
+        outside the psi multiplication: psi corrects the multiplicative
+        exp(.) retransformation of 1+Y, not Y itself.
+        """
+        log_vals = self.unscale_to_log1p(targets_scaled)
+        inc_log, bal_log = log_vals[..., 0], log_vals[..., 1]
 
         unscaled = np.zeros_like(targets_scaled, dtype=np.float32)
         if self.use_log_transform:
-            unscaled[..., 0] = np.expm1(np.maximum(inc_log, 0.0))
-            unscaled[..., 1] = np.expm1(np.maximum(bal_log, 0.0))
+            if smearing_psi is not None:
+                psi_inc, psi_balos = smearing_psi
+                unscaled[..., 0] = psi_inc * np.exp(np.maximum(inc_log, 0.0)) - 1.0
+                unscaled[..., 1] = psi_balos * np.exp(np.maximum(bal_log, 0.0)) - 1.0
+            else:
+                unscaled[..., 0] = np.expm1(np.maximum(inc_log, 0.0))
+                unscaled[..., 1] = np.expm1(np.maximum(bal_log, 0.0))
         else:
             unscaled[..., 0] = inc_log
             unscaled[..., 1] = bal_log

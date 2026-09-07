@@ -58,7 +58,8 @@ def main(results_json: str, peril: str, out_path: str, title: str) -> None:
     ax.set_xlabel("Holdout Calendar Quarter", fontsize=16)
     ax.set_ylabel("Cumulative Holdout Reserve (RM Thousands)", fontsize=16)
     ax.tick_params(axis="y", labelsize=13)
-    ax.set_title(title, fontsize=18)
+    # No in-figure title: the caption in main.tex already states this,
+    # duplicating it in the chart itself was flagged as bad practice.
     ax.grid(True, linestyle="--", alpha=0.5)
     ax.legend(loc="lower right", fontsize=12)
     fig.tight_layout()

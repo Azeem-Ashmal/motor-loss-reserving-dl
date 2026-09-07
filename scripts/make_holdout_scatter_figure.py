@@ -32,23 +32,31 @@ def main(results_path: str, out_path: str) -> None:
     actual = np.array(cells["actual"])
     error_pct = theft["error_pct"]
 
-    fig, axes = plt.subplots(2, 2, figsize=(13, 5))
-    fig.suptitle("Actual vs Predicted Holdout Paid Losses Across Reserving Models (Theft)", fontsize=17)
+    fig, axes = plt.subplots(2, 2, figsize=(13, 6.5))
 
-    for ax, (key, label, color) in zip(axes.flat, MODELS):
+    # Shared axis range across all four panels (not one per panel), so the
+    # panels are visually comparable rather than each auto-scaled to its own
+    # model's prediction spread.
+    hi = 0.0
+    for key, _, _ in MODELS:
+        hi = max(hi, actual.max(), np.array(cells[key]).max())
+    lo, hi = 0, hi * 1.05
+
+    for idx, (ax, (key, label, color)) in enumerate(zip(axes.flat, MODELS)):
         pred = np.array(cells[key])
         ax.scatter(actual, pred, color=color, edgecolor="black", linewidth=0.4, s=45, alpha=0.85)
-        lo, hi = 0, max(actual.max(), pred.max()) * 1.05
         ax.plot([lo, hi], [lo, hi], "k--", linewidth=1.3)
         ax.set_xlim(lo, hi)
         ax.set_ylim(lo, hi)
-        ax.set_title(f"{label} ({error_pct[key]:+.1f}\\%)".replace("\\%", "%"), fontsize=15)
-        ax.set_xlabel("Actual Holdout Paid (RMk)", fontsize=13)
-        ax.set_ylabel("Predicted Holdout Paid (RMk)", fontsize=13)
-        ax.tick_params(axis="both", labelsize=12)
+        ax.set_title(f"{label} ({error_pct[key]:+.1f}\\%)".replace("\\%", "%"), fontsize=13)
+        if idx >= 2:
+            ax.set_xlabel("Actual Holdout Paid (RM)", fontsize=11)
+        if idx % 2 == 0:
+            ax.set_ylabel("Predicted Holdout\nPaid (RM)", fontsize=11)
+        ax.tick_params(axis="both", labelsize=10)
         ax.grid(True, linestyle="--", alpha=0.4)
 
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.tight_layout(w_pad=1.5, h_pad=1.5)
     fig.savefig(out_path, dpi=150, bbox_inches="tight")
     print("written:", out_path)
 

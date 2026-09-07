@@ -3,12 +3,11 @@ Unit tests for the classical reserving models against a hand-computable
 example, independent of any real claims data or the integration-level reconciliation
 in test_reconciliation.py.
 
-The triangle below is the dissertation's own worked example (Table 1,
-Section on Main Reserving Performance): a 4x4 synthetic triangle whose link
-ratios (1.500, 1.200, 1.111) were verified by hand in the text. If this test
-fails, either the dissertation's worked example or this code disagrees with
-basic chain-ladder arithmetic - a five-minute check that should never
-regress silently.
+The triangle below is a small, hand-computable 4x4 synthetic example (not
+drawn from the dissertation or any real data) whose link ratios (1.500,
+1.200, 1.111) are verified by hand below. If this test fails, this code
+disagrees with basic chain-ladder arithmetic - a five-minute check that
+should never regress silently.
 """
 
 import unittest

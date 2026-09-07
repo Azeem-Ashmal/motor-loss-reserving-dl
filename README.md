@@ -30,6 +30,15 @@ generator that produces a structurally identical, obviously-fake triangle set
 so the full pipeline can be run and inspected by anyone. See `data/README.md`
 for the exact schema.
 
+**Process note.** If you populate a local directory with real triangles to
+reproduce the dissertation's results (as `.local_verification_data/` was used
+during development), it is `.gitignore`d and never reaches GitHub, but it is
+not otherwise protected: do not zip, email, or otherwise hand off the working
+folder as a whole without first checking that directory is excluded. The
+governance commitment in the dissertation's Section 1.1 (no individual claim
+record or proprietary data leaves this project) extends to how the folder
+itself is shared, not just to what gets committed.
+
 ## Installation
 
 ```Shell
@@ -113,8 +122,8 @@ dissertation this repository accompanies.
 | Mack Paid Chain Ladder                  |    +56.0%  | worse                  | -- |
 | DeepTriangle LSTM, single-peril (20-seed) | +34.2% ± 35.4pp | worse (t=4.16, p=0.0005) | baseline |
 | DeepTriangle LSTM, pooled perils (20-seed) | +47.2% ± 35.9pp | worse (t=5.72, p=0.00002) | not significantly different (t=1.16, p=0.25) |
-| DeepTriangle GRU, single-peril (20-seed) | +39.9% ± 43.4pp | worse (t=3.97, p=0.0008) | not significantly different (t=0.45, p=0.65) |
-| DeepTriangle LSTM + claim counts (20-seed) | +65.6% ± 47.6pp | worse (t=6.04, p=0.000008) | worse (t=2.37, p=0.023) |
+| DeepTriangle GRU, single-peril (20-seed) | +39.9% ± 43.4pp | worse (t=3.97, p=0.0008) | not significantly different (t=0.50, p=0.62) |
+| DeepTriangle LSTM + claim counts (20-seed) | +65.6% ± 47.6pp | worse (t=6.04, p=0.000008) | worse (t=2.40, p=0.027) |
 
 **Windscreen** (short-tail, high-frequency, low-severity)
 
@@ -132,10 +141,10 @@ individually underperforms it. An occlusion analysis points to the reason:
 with only 1,128 training cells, the model over-extrapolates rather than
 ignoring its inputs — a training-data ceiling, not a fixable architecture
 choice. Averaging the pooled architecture's 20 checkpoints into an ensemble
-confirms this: the ensemble's error equals the mean of its 20 seeds to five
-decimal places, the signature of a shared, systematic bias that ensembling
-cannot cancel. On Windscreen every model under-projects, and pooling makes
-it worse rather than better.
+confirms this: the ensemble's error equals the mean of its 20 seeds to four
+decimal places on Theft and five on Windscreen, the signature of a shared,
+systematic bias that ensembling cannot cancel. On Windscreen every model
+under-projects, and pooling makes it worse rather than better.
 
 Separately, `MackPaidChainLadder.mack_windowed_bootstrap` derives a
 stochastic uncertainty interval for the exact calendar window these reserve
@@ -157,6 +166,21 @@ LSTM mean error (+34.2%) falls inside Mack's own uncertainty envelope for
 that peril, but the single-peril LSTM's mean projected reserve falls
 *outside* ICL's measured 90% interval on both perils — the LSTM is failing
 to beat a benchmark now confirmed precise, not merely assumed to be.
+
+**Paid-only controls** (`run_paid_only_baselines.py`) complete the information-set
+grid: a paid-only GBM is far worse than the joint-feature GBM on Theft
+(+85.4% vs. +15.9%) but roughly level on Windscreen; a paid-only LSTM is
+dramatically better on Theft on a single seed (-0.8% vs. +50.9%) but worse on
+Windscreen. The LSTM result is single-seed only and needs the same 20-seed
+treatment as everything else here before it can be trusted.
+
+**Duan (1983) smearing correction** (`run_smearing_correction.py`) was
+implemented and applied, not left undone: the smearing factor is 184.9
+(Theft) and 12.7 (Windscreen), both driven by a heavy right tail in the
+training residuals rather than a well-behaved correction, and retransforming
+with them makes the reported error far worse (+27,802% and +327%) than the
+uncorrected figures. The underlying retransformation bias is real; the
+standard fix for it is numerically unusable at this data volume.
 
 ### Bugs found and fixed during verification
 
@@ -197,15 +221,21 @@ to beat a benchmark now confirmed precise, not merely assumed to be.
 │   │                           # architecture/feature variants tested this round
 │   ├── run_pooled_multiseed.py # 20-seed pooled multi-peril LSTM variance experiment
 │   ├── run_pooled_ensemble.py  # averages the pooled sweep's 20 checkpoints' predictions
+│   ├── run_pooled_single_seed.py  # seed-42 pooled evaluation (Table 5.6's pooled row)
+│   ├── run_occlusion.py        # occlusion analysis, single-peril and pooled
+│   ├── run_paid_only_baselines.py # paid-only GBM and paid-only LSTM (RQ1's third grid cell)
+│   ├── run_smearing_correction.py # applies Duan (1983) smearing to the seed-42 LSTM
 │   ├── make_figures.py         # generic CI smoke-check figures from outputs/results.json
 │   ├── make_env_block.py       # env_block.tex from requirements-lock.txt
-│   └── make_*_figure.py, patch_stale_figure_title.py
-│                               # the dissertation's actual embedded figures: cumulative
-│                               # run-off, exposure series, holdout scatter, the 65-quarter
-│                               # inflation series, link-ratio period comparison, settlement
-│                               # curve, severity index, triangle heatmap - each built
-│                               # directly from the real triangles or outputs/results.json,
-│                               # documented individually in its own docstring
+│   ├── make_pooled_comparison_figure.py  # single-peril vs. pooled 20-seed boxplots
+│   ├── make_*_figure.py        # the dissertation's other embedded figures: cumulative
+│   │                           # run-off, holdout scatter, the 65-quarter inflation series -
+│   │                           # each built directly from the real triangles or
+│   │                           # outputs/results.json, documented in its own docstring
+│   └── extra/                  # figure scripts not currently embedded in the dissertation
+│                               # (exposure series, link-ratio period, settlement curve,
+│                               # severity index, triangle heatmap) - kept for reference,
+│                               # not wired into any current chapter
 ├── outputs/                    # gitignored; regenerate, don't commit
 └── tests/
     ├── test_classical_models.py     # unit tests against a hand-worked example
@@ -215,6 +245,7 @@ to beat a benchmark now confirmed precise, not merely assumed to be.
     ├── test_mack_windowed_bootstrap.py  # windowed Mack SE determinism + reconciliation
     ├── test_icl_windowed_bootstrap.py   # windowed ICL SE determinism + reconciliation
     ├── test_architecture_variants.py    # GRU cell and claim-count-feature smoke + determinism
+    ├── test_duan_smearing.py        # smearing retransformation + psi-estimation unit tests
     └── test_reconciliation.py        # integration tests against outputs/results.json
 ```
 
@@ -241,14 +272,15 @@ python -m unittest discover -s tests -v
 ```
 
 Only the standard library's `unittest` is required, no extra test-runner
-dependency to install. Eight files, 25 tests, two kinds of check:
+dependency to install. Nine files, 30 tests, two kinds of check:
 
 - `test_classical_models.py`, `test_metrics.py`, `test_interpretability.py`,
   `test_pooled_pipeline.py`, `test_mack_windowed_bootstrap.py`,
   `test_icl_windowed_bootstrap.py`, and
   `test_architecture_variants.py` are unit tests against hand-computable
-  examples or internal-consistency checks (including the dissertation's own
-  worked Table 1), independent of any real claims data file — they run
+  examples or internal-consistency checks (including a small hand-computable
+  4x4 chain-ladder example, not drawn from the dissertation), independent of
+  any real claims data file — they run
   against the bundled synthetic data instead.
 - `test_reconciliation.py` is an integration suite: it checks internal
   identities against whatever is currently in `outputs/results.json`, rather
