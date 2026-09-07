@@ -21,6 +21,11 @@ def generate_env_block():
     pkgs = {}
     for line in content.splitlines():
         line = line.strip()
+        # The interpreter version is kept as a comment ("# Python 3.14.4") so the
+        # lockfile stays parseable as a pip requirements file; strip the marker
+        # before matching, otherwise this line is invisible to the parser.
+        if line.startswith('#'):
+            line = line.lstrip('#').strip()
         if line.startswith('Python '):
             pkgs['Python'] = line.split('Python ')[1]
         elif '==' in line:
@@ -50,7 +55,7 @@ def generate_env_block():
   \\item \\textbf{{scikit-learn}}: \\texttt{{{tex_escape(sklearn_ver)}}}
   \\item \\textbf{{NumPy}}: \\texttt{{{tex_escape(numpy_ver)}}}
   \\item \\textbf{{pandas}}: \\texttt{{{tex_escape(pandas_ver)}}}
-  \\item \\textbf{{Random Seed}}: \\texttt{{42}}
+  \\item \\textbf{{Seeds}}: the explicit 20-seed list in \\texttt{{config/seeds.yaml}} (seed \\texttt{{42}} for the single-seed results labelled as such)
 \\end{{itemize}}
 """
 
