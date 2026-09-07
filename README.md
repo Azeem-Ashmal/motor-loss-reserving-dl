@@ -112,7 +112,7 @@ dissertation this repository accompanies.
 | Incurred Chain Ladder (ICL)             |     +1.3%  | benchmark              | -- |
 | Mack Paid Chain Ladder                  |    +56.0%  | worse                  | -- |
 | DeepTriangle LSTM, single-peril (20-seed) | +34.2% ± 35.4pp | worse (t=4.16, p=0.0005) | baseline |
-| DeepTriangle LSTM, pooled perils (20-seed) | +47.2% ± 35.9pp | worse (t=5.73, p=0.00002) | not significantly different (t=1.16, p=0.25) |
+| DeepTriangle LSTM, pooled perils (20-seed) | +47.2% ± 35.9pp | worse (t=5.72, p=0.00002) | not significantly different (t=1.16, p=0.25) |
 | DeepTriangle GRU, single-peril (20-seed) | +39.9% ± 43.4pp | worse (t=3.97, p=0.0008) | not significantly different (t=0.45, p=0.65) |
 | DeepTriangle LSTM + claim counts (20-seed) | +65.6% ± 47.6pp | worse (t=6.04, p=0.000008) | worse (t=2.37, p=0.023) |
 
@@ -152,7 +152,7 @@ triangle: `IncurredChainLadder.icl_windowed_bootstrap` measures ICL's own
 windowed uncertainty directly, rather than treating its point estimate as
 exact by assumption. On real data: Theft's windowed ICL reserve has a CV of
 8.55% (90% interval RM 44,818k-59,417k); Windscreen's is 2.09% (90% interval
-RM 72,613k-77,845k) — both markedly tighter than Mack's. For context: Theft's
+RM 72,613k-77,844k) — both markedly tighter than Mack's. For context: Theft's
 LSTM mean error (+34.2%) falls inside Mack's own uncertainty envelope for
 that peril, but the single-peril LSTM's mean projected reserve falls
 *outside* ICL's measured 90% interval on both perils — the LSTM is failing
@@ -197,8 +197,15 @@ to beat a benchmark now confirmed precise, not merely assumed to be.
 │   │                           # architecture/feature variants tested this round
 │   ├── run_pooled_multiseed.py # 20-seed pooled multi-peril LSTM variance experiment
 │   ├── run_pooled_ensemble.py  # averages the pooled sweep's 20 checkpoints' predictions
-│   ├── make_figures.py         # figures from the same computed results
-│   └── make_env_block.py       # env_block.tex from requirements-lock.txt
+│   ├── make_figures.py         # generic CI smoke-check figures from outputs/results.json
+│   ├── make_env_block.py       # env_block.tex from requirements-lock.txt
+│   └── make_*_figure.py, patch_stale_figure_title.py
+│                               # the dissertation's actual embedded figures: cumulative
+│                               # run-off, exposure series, holdout scatter, the 65-quarter
+│                               # inflation series, link-ratio period comparison, settlement
+│                               # curve, severity index, triangle heatmap - each built
+│                               # directly from the real triangles or outputs/results.json,
+│                               # documented individually in its own docstring
 ├── outputs/                    # gitignored; regenerate, don't commit
 └── tests/
     ├── test_classical_models.py     # unit tests against a hand-worked example
